@@ -6,13 +6,14 @@ app = Flask(__name__)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        if request.is_json:
-            data = request.get_json()
-        else:
-            data = {"raw": request.data.decode('utf-8')}
+        data = request.get_json(force=False, silent=False)
+        if data is None:
+            raise ValueError("Invalid or missing JSON in request body.")
 
         print(f"[{datetime.datetime.now()}] Alert received: {data}")
         return jsonify({"status": "received"}), 200
+
     except Exception as e:
-        print(f"Webhook error: {e}")
-        return jsonify({"error": str(e)}), 400
+        raw_data = request.data.decode('utf-8', errors='replace')
+        print(f"[{datetime.datetime.now()}] Webhook error: {e}, Raw data: {raw_data}")
+        return jsonify({"error": str(e), "raw": raw_data}), 400
