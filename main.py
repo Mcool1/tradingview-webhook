@@ -1,4 +1,3 @@
-this is my main.py script in github
 from flask import Flask, request, jsonify
 import datetime
 
