@@ -4,14 +4,12 @@ from ib_insync import IB, Future, MarketOrder
 
 app = Flask(__name__)
 
-# Connect to IBKR Gateway or TWS
-ib = IB()
-ib.connect('127.0.0.1', 7497, clientId=1)  # Use ngrok IP if needed
+# Toggle live vs simulated mode
+LIVE_TRADING = False  # Set to True to place real IBKR orders
 
-# Toggle live vs simulated trading
-LIVE_TRADING = False  # Set to True for real trades
+# IBKR ngrok URL (update this to your actual tunnel address)
+IBKR_HOST = 'your-ngrok-subdomain.ngrok.io'  # ⚠️ Replace this
 
-# Order execution logic
 def place_ibkr_order(action, symbol, price):
     order_action = 'BUY' if action.lower() == 'buy' else 'SELL'
 
@@ -24,26 +22,32 @@ def place_ibkr_order(action, symbol, price):
             "price": price
         }
 
-    contract = Future(symbol=symbol, exchange='GLOBEX', currency='USD')
-    ib.qualifyContracts(contract)
+    ib = IB()
+    try:
+        ib.connect(IBKR_HOST, 7497, clientId=1)
+        contract = Future(symbol=symbol, exchange='GLOBEX', currency='USD')
+        ib.qualifyContracts(contract)
 
-    order = MarketOrder(order_action, 1)  # Modify quantity logic here
-    trade = ib.placeOrder(contract, order)
-    ib.sleep(2)
+        order = MarketOrder(order_action, 1)
+        trade = ib.placeOrder(contract, order)
+        ib.sleep(2)
 
-    return {
-        "status": trade.orderStatus.status,
-        "filled": trade.orderStatus.filled,
-        "action": order_action,
-        "symbol": symbol
-    }
+        return {
+            "status": trade.orderStatus.status,
+            "filled": trade.orderStatus.filled,
+            "action": order_action,
+            "symbol": symbol
+        }
+
+    finally:
+        ib.disconnect()
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
         data = request.get_json(force=False, silent=False)
         if data is None:
-            raise ValueError("Invalid or missing JSON in request body.")
+            raise ValueError("Invalid or missing JSON.")
 
         print(f"[{datetime.datetime.now()}] Webhook received: {data}")
 
@@ -52,14 +56,14 @@ def webhook():
         price = data.get("price")
 
         if not all([action, symbol, price]):
-            raise ValueError("Missing one of: action, symbol, price.")
+            raise ValueError("Missing required fields: action, symbol, price.")
 
         result = place_ibkr_order(action, symbol, price)
         return jsonify({"status": "ok", "result": result}), 200
 
     except Exception as e:
         raw_data = request.data.decode('utf-8', errors='replace')
-        print(f"[{datetime.datetime.now()}] Webhook error: {e}, Raw data: {raw_data}")
+        print(f"[{datetime.datetime.now()}] Webhook error: {e}, Raw: {raw_data}")
         return jsonify({"error": str(e), "raw": raw_data}), 400
 
 @app.route('/test', methods=['POST'])
