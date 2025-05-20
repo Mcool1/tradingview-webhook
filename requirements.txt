@@ -1,2 +1,3 @@
 flask
 gunicorn
+ib_insync
